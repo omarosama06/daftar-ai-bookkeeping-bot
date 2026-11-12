@@ -31,7 +31,7 @@ embeddings), Qdrant vector store, Google Sheets, Google Drive
 5. Activate the workflow and message your bot
 
 ## Screenshot
-(add a screenshot of the workflow canvas here)
+<img width="1311" height="582" alt="Daftar " src="https://github.com/user-attachments/assets/2a3b6ec8-4d38-4ca8-b329-d60e18d31a5e" />
 
 ## About
 Built as my graduation project for the DEPI AI Automation track.
