@@ -1,0 +1,1917 @@
+{
+  "name": "Daftar",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        928
+      ],
+      "id": "07c8fe3e-0b28-4b8d-92da-60b1ef01d9a5",
+      "name": "Telegram Trigger",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.photo[$json.message.photo.length - 1].file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        1200
+      ],
+      "id": "dfc6da4d-486b-40c4-9380-5995cca6fa02",
+      "name": "Get a file",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "text": "What's inYou are an expert bookkeeping assistant for Egyptian small businesses.\nRead this receipt or invoice image (Arabic and/or English).\nReturn ONLY a valid JSON object, no extra text, with these keys:\n{\n  \"date\": \"YYYY-MM-DD or null\",\n  \"vendor\": \"string or null\",\n  \"amount\": number (total paid, or null),\n  \"currency\": \"EGP unless clearly different\",\n  \"vat\": number or null,\n  \"category\": one of [\"rent\",\"utilities\",\"inventory\",\"salaries\",\"transport\",\"food\",\"marketing\",\"maintenance\",\"taxes\",\"other\"],\n  \"payment_method\": \"cash\" | \"card\" | \"transfer\" | \"unknown\",\n  \"confidence\": number between 0 and 1\n}\nRules: convert Arabic-Indic digits (٠١٢٣) to normal digits. Never guess a missing value, use null instead. Lower the confidence if the image is blurry or partly unreadable. this image?",
+        "inputType": "base64",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1632,
+        1200
+      ],
+      "id": "b02b4977-9b8e-407a-8267-f5da595712ab",
+      "name": "Analyze image",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.photo }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "array",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "id": "f1d2dd4b-a520-4f70-afd8-2cb69915ca58"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "69e4642a-ea14-49f5-98b3-e78b74cbd34d",
+                    "leftValue": "={{ !!$json.message.voice }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce41cec8-166d-414b-b294-b30d6c991c5f",
+                    "leftValue": "={{ !!$json.message.text }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        896
+      ],
+      "id": "b8f5970b-4311-4e0d-994d-bf0aa90296c5",
+      "name": "Route by Type"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nfunction findJsonText(node) {\n  if (typeof node === 'string') {\n    return node.includes('{') && node.includes('vendor') ? node : null;\n  }\n  if (Array.isArray(node)) {\n    for (const el of node) { const r = findJsonText(el); if (r) return r; }\n  } else if (node && typeof node === 'object') {\n    for (const key of Object.keys(node)) { const r = findJsonText(node[key]); if (r) return r; }\n  }\n  return null;\n}\n\nconst raw = findJsonText(item) || '';\nconst start = raw.indexOf('{');\nconst end = raw.lastIndexOf('}');\nconst clean = start !== -1 && end !== -1 ? raw.slice(start, end + 1) : '';\n\nlet data;\ntry { data = JSON.parse(clean); data.parse_ok = true; }\ncatch (e) { data = { parse_ok: false }; }\n\nconst tg = $('Telegram Trigger').item.json.message;\nconst media = tg.photo ? tg.photo[tg.photo.length - 1] : (tg.voice || tg.document || {});\nconst source = tg.photo ? 'photo' : tg.voice ? 'voice' : tg.document ? 'document' : 'text';\n\n// Link to the receipt image saved in Drive (only exists for photos)\nlet file_link = '';\ntry { file_link = $('Upload receipt to Drive').first().json.webViewLink || ''; } catch (e) {}\n\nreturn {\n  json: {\n    ...data,\n    chat_id: tg.chat.id,\n    telegram_file_id: media.file_id || null,\n    source,\n    file_link,\n    status: data.parse_ok ? 'extracted' : 'failed',\n    raw_debug: raw.slice(0, 300)\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        624
+      ],
+      "id": "79aea48b-08cf-4fa0-8dc0-6e32c82616ed",
+      "name": "Parse JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $('Validate').first().json.needs_review ? 'confirmed_by_user' : 'auto_saved' }}",
+            "telegram_file_id": "={{ $('Validate').item.json.telegram_file_id }}",
+            "date": "={{ $('Validate').item.json.date }}",
+            "amount": "={{ $('Validate').item.json.amount }}",
+            "currency": "={{ $('Validate').item.json.currency }}",
+            "vat": "={{ $('Validate').item.json.vat }}",
+            "category": "={{ $('Validate').item.json.category }}",
+            "payment_method": "={{ $('Validate').item.json.payment_method }}",
+            "confidence": "={{ $('Validate').item.json.confidence }}",
+            "vendor": "={{ $('Validate').item.json.vendor }}",
+            "description": "={{ $('Validate').first().json.description }}",
+            "category_reason": "={{ $('Validate').first().json.category_reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "vendor",
+              "displayName": "vendor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "vat",
+              "displayName": "vat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "payment_method",
+              "displayName": "payment_method",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category_reason",
+              "displayName": "category_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "telegram_file_id",
+              "displayName": "telegram_file_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4544,
+        816
+      ],
+      "id": "9495c071-fb7a-43c5-9b85-263cad33010a",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parse JSON').item.json.chat_id }}",
+        "text": "=✅ تم تسجيل الإيصال 🏪 {{ $('Parse JSON').item.json.vendor }} 💰 {{ $('Parse JSON').item.json.amount }} {{ $('Parse JSON').item.json.currency }} 📂 {{ $('Parse JSON').item.json.category }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4768,
+        816
+      ],
+      "id": "905ab52a-565f-4c51-b843-af66dc2679e3",
+      "name": "Send a text message",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "ابعتلي صورة إيصال أو رسالة صوتية 📸🎤",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        1456
+      ],
+      "id": "e2f8c187-264e-4971-b064-d6cba05713f9",
+      "name": "Send a text message1",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Untitled spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3424,
+        624
+      ],
+      "id": "277e3145-92a7-41d2-a67d-6fc9083453a0",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aa921d06-d2ca-41ad-b568-0e91de42fc7d",
+              "leftValue": "={{ $json.needs_review }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3872,
+        624
+      ],
+      "id": "c0448e63-a669-4321-a502-a3548a9bc5c5",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Merge category').first().json;\nconst rows = $('Get row(s) in sheet').all().map(r => r.json);\n\nconst issues = [];\nif (!d.parse_ok) issues.push('تعذر قراءة الإيصال');\nif (d.amount == null) issues.push('المبلغ غير واضح');\nif (!d.vendor) issues.push('اسم المحل غير واضح');\nif (!d.date) issues.push('التاريخ غير واضح');\nif (typeof d.confidence === 'number' && d.confidence < 0.75) issues.push('ثقة القراءة منخفضة');\nif (typeof d.amount === 'number' && d.amount > 50000) issues.push('مبلغ كبير بشكل غير معتاد');\n\nconst isDuplicate = rows.some(r =>\n  r.vendor && String(r.vendor) === String(d.vendor) &&\n  Number(r.amount) === Number(d.amount) &&\n  String(r.date) === String(d.date)\n);\nif (isDuplicate) issues.push('يبدو أن هذا الإيصال مسجل من قبل');\n\nreturn [{\n  json: {\n    ...d,\n    needs_review: issues.length > 0,\n    issues_text: issues.join(' • ')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3648,
+        624
+      ],
+      "id": "ef3f71ca-9ad1-47bd-a0c6-4a42181a76b4",
+      "name": "Validate"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $json.chat_id }}",
+        "message": "=⚠️ محتاج تأكيدك\n🏪 {{ $json.vendor }}\n💰 {{ $json.amount }} {{ $json.currency }}\n📅 {{ $json.date }}\nالمشكلة: {{ $json.issues_text }}\nأسجلها؟",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "سجّل ✅",
+            "disapproveLabel": "تجاهل ❌"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4096,
+        624
+      ],
+      "id": "b6b7d16a-31d8-48cc-9d99-4e866369ab3f",
+      "name": "Send message and wait for response",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Validate').first().json.chat_id }}",
+        "text": "تم التجاهل ❌",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4544,
+        624
+      ],
+      "id": "a5b03d56-cc3c-4a7a-ab40-039c40c16135",
+      "name": "Disapproval Message",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "81b58c0a-2f0c-497d-b842-7e212e81d1a7",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4320,
+        624
+      ],
+      "id": "fbd399f8-e61a-4d81-93fe-8f554de3b50f",
+      "name": "Approved?"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        1488
+      ],
+      "id": "e8b249eb-3af8-4cc5-bf9f-52b935c44d56",
+      "name": "Get a Voice File",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {
+          "language": "ar"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        1488
+      ],
+      "id": "69564ac2-9ae6-4ae9-b2ec-c9055908910e",
+      "name": "Transcribe a recording",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "$input.item.binary.data.fileName = 'voice.ogg';\n$input.item.binary.data.mimeType = 'audio/ogg';\nreturn $input.item;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        1488
+      ],
+      "id": "ee57a81d-014c-48ce-8c82-015820d10e69",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a bookkeeping assistant for Egyptian small businesses.\nToday's date is {{ $now.format('yyyy-MM-dd') }}.\nThe user dictated this expense in Arabic or English:\n\"{{ $json.text }}\"\n\nReturn ONLY a valid JSON object, no extra text:\n{\n  \"date\": \"YYYY-MM-DD or null\",\n  \"vendor\": \"who was paid or what it was for, or null\",\n  \"amount\": number or null,\n  \"currency\": \"EGP unless stated otherwise\",\n  \"vat\": null,\n  \"category\": one of [\"rent\",\"utilities\",\"inventory\",\"salaries\",\"transport\",\"food\",\"marketing\",\"maintenance\",\"taxes\",\"other\"],\n  \"payment_method\": \"cash\" | \"card\" | \"transfer\" | \"unknown\",\n  \"confidence\": number between 0 and 1\n}\nRules: convert Arabic-Indic digits to normal digits. Resolve words like \"امبارح\" (yesterday) and \"النهاردة\" (today) to real dates. Never guess missing values, use null.\nVendor rules: \"vendor\" is WHO or WHAT was paid (e.g. \"كهرباء\", \"إيجار المحل\", \"مورد الخضار\"). Never use time words (النهاردة، امبارح، الأسبوع ده، today, yesterday) as the vendor. If the user doesn't say who was paid, use the expense type as the vendor (e.g. \"فاتورة كهرباء\"), or null.\n  \"description\": \"very short summary of what was bought or paid for, in the receipt's language\","
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        624
+      ],
+      "id": "a793ff68-4c40-4989-9dc6-ccce0cbbf1eb",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "dafter_kb",
+          "mode": "list",
+          "cachedResultName": "dafter_kb"
+        },
+        "prompt": "={{ $json.vendor ?? 'unknown' }} {{ $json.description ?? '' }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        2272,
+        512
+      ],
+      "id": "b39b2752-334c-410f-b274-5ce2de949733",
+      "name": "Qdrant Vector Store",
+      "credentials": {
+        "qdrantApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Qdrant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2352,
+        752
+      ],
+      "id": "4b6c5e0b-a9de-4139-b58b-129bc0350182",
+      "name": "Embeddings OpenAI",
+      "alwaysOutputData": true,
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Parse JSON').first().json;\nconst context = $input.all()\n  .map((i, n) => `${n + 1}. ${i.json.document?.pageContent ?? i.json.pageContent ?? ''}`)\n  .join('\\n');\nreturn [{ json: { ...base, rag_context: context } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        624
+      ],
+      "id": "772a64af-63f9-4e07-a4ef-722bebdba692",
+      "name": "Build context"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Build context').first().json;\n\nfunction findText(node) {\n  if (typeof node === 'string') return node.includes('\"category\"') ? node : null;\n  if (Array.isArray(node)) { for (const e of node) { const r = findText(e); if (r) return r; } }\n  else if (node && typeof node === 'object') { for (const k of Object.keys(node)) { const r = findText(node[k]); if (r) return r; } }\n  return null;\n}\n\nconst raw = findText($input.first().json) || '';\nlet out = {};\ntry { out = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); } catch (e) {}\n\nconst allowed = ['rent','utilities','inventory','salaries','transport','food','marketing','maintenance','taxes','other'];\nconst ok = allowed.includes(out.category);\n\nreturn [{ json: {\n  ...base,\n  category: ok ? out.category : (base.category || 'other'),\n  category_reason: out.reason || '',\n  category_source: ok ? 'rag' : 'fallback'\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        624
+      ],
+      "id": "75dc4822-fe49-4479-937b-c9edf35b7a3d",
+      "name": "Merge category"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You categorize expenses for an Egyptian small business.\nExpense: vendor=\"{{ $json.vendor }}\", description=\"{{ $json.description }}\", amount={{ $json.amount }}\n\nReference notes retrieved from the knowledge base:\n{{ $json.rag_context }}\n\nChoose exactly ONE category from: rent, utilities, inventory, salaries, transport, food, marketing, maintenance, taxes, other.\nBase your choice on the reference notes. Use \"other\" only if nothing fits.\nReturn ONLY JSON: {\"category\":\"...\",\"reason\":\"one short sentence in Arabic that says which note you used\"}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        2848,
+        624
+      ],
+      "id": "e2b480b9-fabe-4501-9ab3-bcc9d09b7591",
+      "name": "Categorize",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                6
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        1712
+      ],
+      "id": "fc682ca5-5dd5-4e76-9e30-d0d2726aa9ce",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const DAYS = 7; // testing: includes all old rows. Change to 7 for the real weekly report.\n\nconst rows = $input.all().map(r => r.json);\nconst now = new Date();\nconst from = new Date(now.getTime() - DAYS * 24 * 3600 * 1000);\n\nconst recent = rows.filter(r => {\n  const d = new Date(r.date);\n  return !isNaN(d) && d >= from && d <= now && r.status !== 'failed';\n});\n\nconst egp = recent.filter(r => (r.currency || 'EGP') === 'EGP');\nconst total = egp.reduce((s, r) => s + (Number(r.amount) || 0), 0);\n\nconst byCat = {};\negp.forEach(r => {\n  const c = r.category || 'other';\n  byCat[c] = (byCat[c] || 0) + (Number(r.amount) || 0);\n});\nconst cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);\n\nconst confirmed = recent.filter(r => r.status === 'confirmed_by_user').length;\nconst otherCurrency = recent.length - egp.length;\n\nconst stats_text =\n`Period: last ${DAYS} days\nExpenses recorded: ${recent.length} (in EGP: ${egp.length}, other currencies: ${otherCurrency})\nTotal EGP: ${total.toFixed(2)}\nBy category (EGP): ${cats.map(([c, v]) => c + ' ' + v.toFixed(2)).join(', ') || 'none'}\nNeeded manual confirmation: ${confirmed}`;\n\nreturn [{ json: { stats_text, total, count: recent.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        1712
+      ],
+      "id": "cf549036-43b4-43d3-9cb4-61190ac3e248",
+      "name": "Summarize"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a friendly bookkeeping assistant for a small business owner in Egypt.\nWrite a short weekly expense report in simple Arabic, in at most 8 lines, using ONLY these numbers:\n\n{{ $json.stats_text }}\n\nInclude: the total, the biggest spending category, one observation, and one practical suggestion.\nDo not invent any number that is not listed above. If there is no data, say so politely.\nDo not write a title or heading, start directly with the content."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        1712
+      ],
+      "id": "91fb6b49-24ab-4316-9dd2-4a5815a546be",
+      "name": "Message a model1",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        1712
+      ],
+      "id": "f7fc856d-7a78-4470-ae57-998069815375",
+      "name": "Get row in ledger",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=📊 تقريرك الأسبوعي {{ $json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        1712
+      ],
+      "id": "c8b3b242-bd42-4a44-ad83-a073a35a362a",
+      "name": "Summery Message",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Weekly Report\n",
+        "height": 224,
+        "width": 1328
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -96,
+        1648
+      ],
+      "typeVersion": 1,
+      "id": "4958993a-b90b-4b08-b84d-33b19b2a8bf7",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1344,
+        992
+      ],
+      "id": "495c96b1-c7bb-4a8f-9510-ee4bfb274cb0",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are the bookkeeping assistant of a small Egyptian business. Today is {{ $json.today }}.\nAnswer the owner's question in simple Arabic, in at most 4 lines, using ONLY the ledger data below.\nIf the data does not contain the answer, say you don't have it. Never invent numbers. Never add amounts in different currencies together.\n\nLEDGER DATA:\n{{ $json.ledger_text }}\n\nQUESTION: {{ $json.question }}\n\nRules:\n- Categories are broad: \"utilities\" includes electricity, water, gas, internet and phone. If the owner asks about a specific item (e.g. electricity), look through the entries for a matching vendor or description and add up only those.\n- First list the matching entries (date and amount), then give the total.\n- If nothing matches, say so plainly. Never add different currencies together. Never invent entries."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1920,
+        1008
+      ],
+      "id": "a0252d25-e817-487b-a691-678255a098cd",
+      "name": "Message a model2",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Prepare ledger summary').first().json.chat_id }}",
+        "text": "={{ $json.output[0].content[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2336,
+        1008
+      ],
+      "id": "85ca2801-3ab8-4940-bcf2-4352fac7f907",
+      "name": "Send a text message2",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(r => r.json).filter(r => r.status !== 'failed' && r.amount);\nconst q = $('Telegram Trigger').first().json.message;\n\nconst lines = rows.slice(-150).map(r =>\n  `${r.date} | ${r.vendor || '-'} | ${r.description || '-'} | ${r.amount} ${r.currency || 'EGP'} | ${r.category || 'other'}`\n).join('\\n');\n\nreturn [{ json: {\n  question: q.text,\n  chat_id: q.chat.id,\n  today: new Date().toISOString().slice(0, 10),\n  ledger_text: `ENTRIES (date | vendor | description | amount currency | category):\\n${lines}`\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        992
+      ],
+      "id": "93437d14-f9d6-44f8-835b-3bc28ef5144e",
+      "name": "Prepare ledger summary"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cdb4d949-d520-466f-8389-001156450bcb",
+              "leftValue": "={{ $json.message.chat.id }}",
+              "rightValue": "YOUR_TELEGRAM_CHAT_ID",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        928
+      ],
+      "id": "3b5864ad-4cf1-46a2-9d15-56fff84aebbb",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text.trim().startsWith('/undo') }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "73be1d5e-4628-4a4e-9f44-d1b18725bceb"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        672,
+        240
+      ],
+      "id": "fe59916d-c0fa-49a5-8ad5-0514186deceb",
+      "name": "Text intent"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "expense",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "61e5fcbd-c45e-4ece-86d3-750855469668"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "04ef00a5-9ddf-40f4-a10a-b3dd6e8e76cf",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        704
+      ],
+      "id": "e3918cc8-5345-486d-936a-dc740215d13e",
+      "name": "Expense or question"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "اكتب مصروفًا مثل: دفعت ٢٠٠ جنيه بنزين، أو اسألني عن مصروفاتك 😊",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        800
+      ],
+      "id": "91b0080a-88ad-4106-b9fb-72f6a809cf30",
+      "name": "Send a text message3",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8ae60982-11b6-4bfa-ba69-3d4b9c49d561",
+              "name": "text",
+              "value": "={{ $('Telegram Trigger').first().json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1344,
+        608
+      ],
+      "id": "fa1eed46-7314-4426-aa20-46b3ca5701d6",
+      "name": "Text to transcript"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        240
+      ],
+      "id": "fbb0832e-0a0f-4e3e-b51a-ba31a5acf493",
+      "name": "Undo: get rows",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chat_id = $('Telegram Trigger').first().json.message.chat.id;\nconst rows = $input.all().map(r => r.json).filter(r => r.row_number);\nif (!rows.length) return [{ json: { found: false, chat_id } }];\nconst last = rows[rows.length - 1];\nreturn [{ json: {\n  found: true,\n  chat_id,\n  row_number: last.row_number,\n  summary: `${last.vendor || '-'} | ${last.amount} ${last.currency || ''} | ${last.category || ''}`\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        240
+      ],
+      "id": "7086b4d1-b8a1-470c-a0e6-215af4a3d3c8",
+      "name": "Find last row"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "470bd19f-ff1c-4d8e-92bd-b91a8b40f2f7",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        240
+      ],
+      "id": "0ddca2e8-b3aa-4e37-8ea8-7ff7a462cf79",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID"
+        },
+        "startIndex": "={{ $json.row_number }}"
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1632,
+        224
+      ],
+      "id": "a233bfe9-7ca3-4bf7-9859-cccaa99d7cb6",
+      "name": "Delete rows or columns from sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Find last row').first().json.chat_id }}",
+        "text": "=↩️ تم حذف آخر عملية: {{ $('Find last row').first().json.summary }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1984,
+        224
+      ],
+      "id": "291c7809-f69e-4609-8737-27a998ad2bfa",
+      "name": "Send a text message4",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Find last row').first().json.chat_id }}",
+        "text": "مفيش عمليات أحذفها",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1632,
+        416
+      ],
+      "id": "5a66b491-3321-4c6c-93b4-267efea26595",
+      "name": "Send a text message5",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = ($json.message?.text || '').trim();\n\n// Turn Arabic-Indic digits into normal digits so the number check works\nconst normalized = text.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));\nconst hasNumber = /\\d/.test(normalized);\n\nconst isQuestion =\n  /[؟?]/.test(text) ||\n  /^(كم|كام|بكام|ايه|إيه|ما|ماذا|متى|امتى|ازاي)(\\s|$)/.test(text) ||\n  /^(how|what|when|which|show|list)\\b/i.test(text);\n\nlet intent = 'other';\nif (isQuestion) intent = 'question';\nelse if (hasNumber) intent = 'expense';\n\nreturn { json: { intent, text } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        720
+      ],
+      "id": "564a1e65-4f33-490a-9a81-d808d512c7f1",
+      "name": "Classify text"
+    },
+    {
+      "parameters": {
+        "name": "=receipt_{{ $now.format('yyyyMMdd_HHmmss') }}.jpg",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "YOUR_DRIVE_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Dafter Receipts",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/YOUR_DRIVE_FOLDER_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1120,
+        1200
+      ],
+      "id": "54418782-bb5f-48c3-8c12-661ec993358e",
+      "name": "Upload receipt to Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: $input.item.json,\n  binary: $('Get a file').first().binary\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        1200
+      ],
+      "id": "8731cd94-7784-41e4-a785-aae5c35c26b0",
+      "name": "Restore image"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "Upload receipt to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze image": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Type": {
+      "main": [
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a Voice File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Text intent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send message and wait for response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send message and wait for response": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Disapproval Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a Voice File": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Build context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build context": {
+      "main": [
+        [
+          {
+            "node": "Categorize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge category": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Categorize": {
+      "main": [
+        [
+          {
+            "node": "Merge category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row in ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Summery Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row in ledger": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Prepare ledger summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model2": {
+      "main": [
+        [
+          {
+            "node": "Send a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare ledger summary": {
+      "main": [
+        [
+          {
+            "node": "Message a model2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Route by Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text intent": {
+      "main": [
+        [
+          {
+            "node": "Undo: get rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expense or question": {
+      "main": [
+        [
+          {
+            "node": "Text to transcript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text to transcript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Undo: get rows": {
+      "main": [
+        [
+          {
+            "node": "Find last row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find last row": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Delete rows or columns from sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete rows or columns from sheet": {
+      "main": [
+        [
+          {
+            "node": "Send a text message4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify text": {
+      "main": [
+        [
+          {
+            "node": "Expense or question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload receipt to Drive": {
+      "main": [
+        [
+          {
+            "node": "Restore image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore image": {
+      "main": [
+        [
+          {
+            "node": "Analyze image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "23e0a33a-fe11-4882-94cd-f931a80c3888",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REMOVED"
+  },
+  "nodeGroups": [],
+  "id": "REMOVED",
+  "tags": []
+}
